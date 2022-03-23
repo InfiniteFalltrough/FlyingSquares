@@ -6,16 +6,22 @@
 //
 
 import SwiftUI
+import SpriteKit
 
 struct ContentView: View {
-    var body: some View {
-        Text("Hello, world!")
-            .padding()
+    
+    var scene: SKScene {
+        let scene = SceneConstructor()
+        scene.size = CGSize(width: width, height: height)
+        scene.scaleMode = .aspectFill
+        scene.backgroundColor = .clear
+        return scene
     }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+    
+    var body: some View {
+        ZStack {
+            SpriteView(scene: scene, options: .allowsTransparency)
+            Text("Hello World!")
+        }
     }
 }
