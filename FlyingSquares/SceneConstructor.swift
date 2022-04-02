@@ -25,13 +25,13 @@ class SceneConstructor: SKScene, SKPhysicsContactDelegate {
     let firstCollisionCategory: UInt32 = 1 << 0
     let edgeCollisionCategory: UInt32 = 1 << 31
     
-    func setupNodes() {
+    private func setupNodes() {
         for n in nodes {
             n.size = CGSize(width: 75, height: 75)
         }
     }
     // Collisions
-    func setUpCollisions() {
+    private func setUpCollisions() {
         //Assign our category bit masks to our physics bodies
         for n in nodes {
             n.physicsBody?.categoryBitMask = firstCollisionCategory
@@ -55,11 +55,9 @@ class SceneConstructor: SKScene, SKPhysicsContactDelegate {
         case firstCollisionCategory | edgeCollisionCategory:
             let node = contact.bodyA.categoryBitMask == firstCollisionCategory ? contact.bodyA.node : contact.bodyB.node
             node?.physicsBody?.applyImpulse(CGVector(dx: randomIntX(), dy: randomIntY()))
-//            print("firstCollisionCategory | edgeCollisionCategory - contact")
         case firstCollisionCategory | firstCollisionCategory:
             let node = contact.bodyA.categoryBitMask == firstCollisionCategory ? contact.bodyA.node : contact.bodyB.node
             node?.physicsBody?.applyImpulse(CGVector(dx: randomIntX(), dy: randomIntY()))
-//            print("firstCollisionCategory | firstCollisionCategory - contact")
         default:
             print("Some other contact occurred")
         }
