@@ -36,5 +36,6 @@ A physics-based app built with SwiftUI and SpriteKit.
 - Physical device with gyroscope
 - Xcode 12.0+
 
-https://user-images.githubusercontent.com/65627244/159684080-f30569d3-deb3-4284-bb6e-51016e175f48.gif
+![159684080-f30569d3-deb3-4284-bb6e-51016e175f48](https://github.com/user-attachments/assets/b23db9dc-383a-4b4b-b0d0-4490761291d0)
+
 
