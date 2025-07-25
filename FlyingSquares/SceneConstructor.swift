@@ -9,110 +9,182 @@ import SwiftUI
 import SpriteKit
 import CoreMotion
 
+// MARK: - Game Node Protocol
+protocol GameNode {
+    var spriteNode: SKSpriteNode { get }
+    func setupPhysics()
+    func applyRandomImpulse()
+}
+
+// MARK: - Flying Square Node
+class FlyingSquareNode: GameNode {
+    let spriteNode: SKSpriteNode
+    
+    init(imageName: String) {
+        self.spriteNode = SKSpriteNode(imageNamed: imageName)
+        setupNode()
+    }
+    
+    private func setupNode() {
+        spriteNode.size = Consts.Physics.nodeSize
+        spriteNode.physicsBody = SKPhysicsBody(circleOfRadius: Consts.Physics.physicsBodyRadius)
+        setupPhysics()
+    }
+    
+    func setupPhysics() {
+        guard let physicsBody = spriteNode.physicsBody else { return }
+        physicsBody.categoryBitMask = Consts.Collision.firstCategory
+        physicsBody.collisionBitMask = Consts.Collision.edgeCategory | Consts.Collision.firstCategory
+        physicsBody.contactTestBitMask = Consts.Collision.firstCategory
+    }
+    
+    func applyRandomImpulse() {
+        spriteNode.physicsBody?.applyImpulse(Consts.randomImpulse())
+    }
+}
+
+// MARK: - Scene Constructor
 class SceneConstructor: SKScene, SKPhysicsContactDelegate {
     
-    var motionManager = CMMotionManager()
-    var timer = Timer()
-    var nodes =
-    [
-        SKSpriteNode(imageNamed: "codercat"),
-        SKSpriteNode(imageNamed: "codercat"),
-        SKSpriteNode(imageNamed: "codercat"),
-        SKSpriteNode(imageNamed: "codercat")
+    // MARK: - Properties
+    private var motionManager: CMMotionManager?
+    private var forcePushTimer: Timer?
+    private var gameNodes: [FlyingSquareNode] = []
+    
+    // MARK: - Initial Node Positions
+    private let initialPositions: [CGPoint] = [
+        CGPoint(x: Consts.screenWidth / 2.9, y: Consts.screenHeight / 1.05),
+        CGPoint(x: Consts.screenWidth / 1.13, y: Consts.screenHeight / 1.21),
+        CGPoint(x: Consts.screenWidth / 2.75, y: Consts.screenHeight / 1.55),
+        CGPoint(x: Consts.screenWidth / 1.30, y: Consts.screenHeight / 4.5)
     ]
     
-    // Collision categories
-    let firstCollisionCategory: UInt32 = 1 << 0
-    let edgeCollisionCategory: UInt32 = 1 << 31
+    // MARK: - Lifecycle
+    override func didMove(to view: SKView) {
+        setupScene()
+        setupNodes()
+        setupPhysicsWorld()
+        setupMotionManager()
+        startForcePushTimer()
+    }
+    
+    deinit {
+        cleanup()
+    }
+    
+    // MARK: - Setup Methods
+    private func setupScene() {
+        physicsBody = SKPhysicsBody(edgeLoopFrom: frame)
+        physicsBody?.categoryBitMask = Consts.Collision.edgeCategory
+        physicsWorld.contactDelegate = self
+        view?.clipsToBounds = true
+    }
     
     private func setupNodes() {
-        for n in nodes {
-            n.size = CGSize(width: 75, height: 75)
+        for _ in 0..<4 {
+            let node = FlyingSquareNode(imageName: "codercat")
+            gameNodes.append(node)
         }
-    }
-    // Collisions
-    private func setUpCollisions() {
-        //Assign our category bit masks to our physics bodies
-        for n in nodes {
-            n.physicsBody?.categoryBitMask = firstCollisionCategory
-            n.physicsBody?.collisionBitMask = edgeCollisionCategory ^ firstCollisionCategory
+        
+        for (index, gameNode) in gameNodes.enumerated() {
+            if index < initialPositions.count {
+                gameNode.spriteNode.position = initialPositions[index]
+            }
+            addChild(gameNode.spriteNode)
         }
-        physicsBody?.categoryBitMask = edgeCollisionCategory
-        if nodes.count == 4 {
-            nodes[0].physicsBody?.contactTestBitMask = nodes[1].physicsBody!.collisionBitMask
-            nodes[1].physicsBody?.contactTestBitMask = nodes[2].physicsBody!.collisionBitMask
-            nodes[2].physicsBody?.contactTestBitMask = nodes[3].physicsBody!.collisionBitMask
-            nodes[3].physicsBody?.contactTestBitMask = nodes[0].physicsBody!.collisionBitMask
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + Consts.Timing.initialDelay) { [weak self] in
+            self?.applyInitialImpulses()
         }
-        //Set ourselves as the contact delegate
-        physicsWorld.contactDelegate = self
     }
     
+    private func setupPhysicsWorld() {
+        physicsWorld.speed = 1.0
+    }
+    
+    private func setupMotionManager() {
+        motionManager = CMMotionManager()
+        guard let motionManager = motionManager, motionManager.isGyroAvailable else {
+            print("Gyroscope not available")
+            return
+        }
+        
+        motionManager.gyroUpdateInterval = Consts.Timing.gyroUpdateInterval
+        motionManager.startGyroUpdates()
+    }
+    
+    private func applyInitialImpulses() {
+        let initialImpulses: [CGVector] = [
+            CGVector(dx: 5, dy: 10),
+            CGVector(dx: 8, dy: -4),
+            CGVector(dx: -7, dy: 2),
+            CGVector(dx: 3, dy: -8)
+        ]
+        
+        for (index, gameNode) in gameNodes.enumerated() {
+            if index < initialImpulses.count {
+                gameNode.spriteNode.physicsBody?.applyImpulse(initialImpulses[index])
+            }
+        }
+    }
+    
+    // MARK: - Timer Management
+    private func startForcePushTimer() {
+        forcePushTimer = Timer.scheduledTimer(
+            timeInterval: Consts.Timing.forcePushInterval,
+            target: self,
+            selector: #selector(forcePush),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+    
+    @objc private func forcePush() {
+        gameNodes.forEach { $0.applyRandomImpulse() }
+    }
+    
+    // MARK: - Update Loop
+    override func update(_ currentTime: TimeInterval) {
+        guard let motionManager = motionManager,
+              let gyroData = motionManager.gyroData else { return }
+        
+        physicsWorld.gravity = CGVector(dx: gyroData.rotationRate.x, dy: gyroData.rotationRate.y)
+    }
+    
+    // MARK: - Collision Handling
     func didBegin(_ contact: SKPhysicsContact) {
         let contactMask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
         
         switch contactMask {
-        case firstCollisionCategory | edgeCollisionCategory:
-            let node = contact.bodyA.categoryBitMask == firstCollisionCategory ? contact.bodyA.node : contact.bodyB.node
-            node?.physicsBody?.applyImpulse(CGVector(dx: randomIntX(), dy: randomIntY()))
-        case firstCollisionCategory | firstCollisionCategory:
-            let node = contact.bodyA.categoryBitMask == firstCollisionCategory ? contact.bodyA.node : contact.bodyB.node
-            node?.physicsBody?.applyImpulse(CGVector(dx: randomIntX(), dy: randomIntY()))
+        case Consts.Collision.firstCategory | Consts.Collision.edgeCategory:
+            handleEdgeCollision(contact)
+        case Consts.Collision.firstCategory | Consts.Collision.firstCategory:
+            handleNodeCollision(contact)
         default:
-            print("Some other contact occurred")
+            print("Unknown collision occurred")
         }
     }
     
-    override func didMove(to view: SKView) {
-        self.setupNodes()
-        self.physicsBody = SKPhysicsBody(edgeLoopFrom: self.frame)
-        self.physicsBody?.mass = 0.7
+    private func handleEdgeCollision(_ contact: SKPhysicsContact) {
+        let node = contact.bodyA.categoryBitMask == Consts.Collision.firstCategory 
+            ? contact.bodyA.node 
+            : contact.bodyB.node
+        node?.physicsBody?.applyImpulse(Consts.randomImpulse())
+    }
+    
+    private func handleNodeCollision(_ contact: SKPhysicsContact) {
+        let node = contact.bodyA.categoryBitMask == Consts.Collision.firstCategory 
+            ? contact.bodyA.node 
+            : contact.bodyB.node
+        node?.physicsBody?.applyImpulse(Consts.randomImpulse())
+    }
+    
+    // MARK: - Cleanup
+    private func cleanup() {
+        motionManager?.stopGyroUpdates()
+        motionManager = nil
         
-        nodes.forEach { n in
-            if nodes.count == 4 {
-                nodes[0].position = CGPoint(x: width / 2.9, y: height / 1.05);
-                nodes[1].position = CGPoint(x: width / 1.13, y: height / 1.21);
-                nodes[2].position = CGPoint(x: width / 2.75, y: height / 1.55);
-                nodes[3].position = CGPoint(x: width / 1.30, y: height / 4.5)
-            }
-            self.addChild(n)
-        }
-        view.clipsToBounds = true
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            for n in self.nodes {
-                n.physicsBody = SKPhysicsBody(circleOfRadius: width / 10)
-            }
-            self.motionManager.gyroUpdateInterval = 0.1 / 60
-            self.motionManager.startGyroUpdates()
-            self.physicsWorld.speed = 1
-            
-            self.nodes.forEach { n in
-                if self.nodes.count == 3 {
-                    self.nodes[0].physicsBody?.applyImpulse(CGVector(dx: 5, dy: 10));
-                    self.nodes[1].physicsBody?.applyImpulse(CGVector(dx: 8, dy: -4));
-                    self.nodes[2].physicsBody?.applyImpulse(CGVector(dx: -7, dy: 2))
-                }
-            }
-            self.setUpCollisions()
-        }
-        self.startForcePush()
-    }
-    
-    override func update(_ currentTime: TimeInterval) {
-        if let gyroData = motionManager.gyroData {
-            physicsWorld.gravity = CGVector(dx: gyroData.rotationRate.x, dy: gyroData.rotationRate.y)
-        }
-    }
-    
-    func startForcePush() {
-        _ = Timer.scheduledTimer(timeInterval: 7.5, target: self, selector: #selector(self.forcePush), userInfo: nil , repeats: true)
-    }
-    
-    @objc func forcePush() {
-        for n in nodes {
-            n.physicsBody?.applyImpulse(CGVector(dx: randomIntX(), dy: randomIntY()))
-        }
-        //        self.timer.invalidate()
+        forcePushTimer?.invalidate()
+        forcePushTimer = nil
     }
 }
